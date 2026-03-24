@@ -33,9 +33,14 @@ def start_index():
 def search_page():
     """Arama sayfasını gösterir ve arama yapar."""
     query = request.args.get('query', '')
+    sort_by = request.args.get('sortBy', '')
     results = []
     if query:
-        results = search_service.search(query)
+        results = search_service.search(query, sort_by=sort_by)
+        
+    if sort_by == 'relevance' or request.headers.get('Accept') == 'application/json':
+        return jsonify(results)
+        
     return render_template('search.html', query=query, results=results)
 
 @app.route('/status')
@@ -52,4 +57,4 @@ def api_status():
 if __name__ == '__main__':
     # threaded=True, Flask'in aynı anda birden fazla isteği işlemesini sağlar.
     # Bu, arka plan taraması çalışırken UI'ın donmamasını sağlar.
-    app.run(debug=True, threaded=True)
+    app.run(debug=True, threaded=True, port=3600)

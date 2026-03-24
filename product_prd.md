@@ -18,11 +18,14 @@ The objective is to build a single-machine, locally runnable Web Crawler and Sea
   - State should be managed in a way that handles concurrent read/writes safely.
 
 ### 2.2. Search (Query Engine)
-- **Input:** `query` (string keyword).
+- **Input:** `query` (string keyword), optional `sortBy` parameter.
 - **Behavior:**
-  - Searches the indexed database for pages where the `query` exists in the title or content.
+  - Performs a basic search across the indexed database for pages where the `query` exists in the title or content.
+  - Generates specialized alphabetic `.data` index files (`data/storage/{letter}.data`) during crawling to track exact word frequencies.
+  - When `sortBy=relevance` is requested, it directly queries the raw `.data` datasets.
+  - Dynamic Relevance Scoring: Results are calculated via `score = (frequency * 10) + 1000 - (depth * 5)` and returned in descending order.
   - Must be able to run while the indexer is active (non-blocking).
-- **Output:** Returns a list of triples in the format: `(relevant_url, origin_url, depth)`.
+- **Output:** Returns JSON array or HTML table formatted displaying: `url, origin_url, depth, frequency (if applicable), relevance_score`.
 
 ### 2.3. User Interface
 - Provide a simple Web UI (or CLI) with three main views/commands:
@@ -36,5 +39,9 @@ The objective is to build a single-machine, locally runnable Web Crawler and Sea
 - **Libraries:** Limit external libraries to HTTP clients (`requests`), HTML parsers (`beautifulsoup4`), and lightweight Web Frameworks (`flask`). Do not use out-of-the-box crawling libraries.
 
 ## 4. Expected Data Model
-- `crawl_jobs`: Tracks job ID, origin_url, max_depth, and status.
-- `pages`: Tracks unique URLs, associated job_id, depth, title, and parsed content.
+- **SQLite Relational Base:**
+  - `crawl_jobs`: Tracks job ID, origin_url, max_depth, and status.
+  - `pages`: Tracks unique URLs, associated job_id, depth, title, and parsed content.
+- **Inverted Raw Index Files:**
+  - Stored inside `data/storage/` separated by alphabetical initials (e.g., `p.data`).
+  - Strict space-delimited structure representing: `word url origin_url depth frequency`.

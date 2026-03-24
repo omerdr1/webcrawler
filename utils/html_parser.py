@@ -30,18 +30,18 @@ def extract_title_and_text(html_content):
     text = soup.get_text(separator=' ', strip=True)
     return title, text
 
-def extract_links(html_content, base_url):
+def extract_links(html_content, current_url, origin_url):
     """HTML'den tüm geçerli linkleri çıkarır ve mutlak URL'lere dönüştürür."""
     soup = BeautifulSoup(html_content, 'html.parser')
     links = set()
-    base_netloc = urlparse(base_url).netloc
+    base_netloc = urlparse(origin_url).netloc
 
     for a_tag in soup.find_all('a', href=True):
         href = a_tag['href'].strip()
         if href.startswith('#') or href.startswith('mailto:') or href.startswith('javascript:'):
             continue
         
-        absolute_url = urljoin(base_url, href)
+        absolute_url = urljoin(current_url, href)
         if urlparse(absolute_url).netloc == base_netloc:
             links.add(absolute_url)
             
