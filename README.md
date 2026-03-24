@@ -25,7 +25,7 @@ A concurrent web crawling platform and search engine built with Python and Flask
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/web-crawler.git
+   git clone https://github.com/omerdr1/webcrawler.git
    cd web-crawler
    ```
 
