@@ -6,6 +6,8 @@ A concurrent web crawling platform and search engine built with Python and Flask
 
 * **Multi-threaded Web Crawler:** Utilizes Python's `ThreadPoolExecutor` for concurrent page fetching without blocking the main server.
 * **Real-time Search Engine:** Query indexed pages instantly, even while new pages are being crawled and added to the database.
+* **Relevance Scoring Engine:** Supports exact word matching via specific endpoints utilizing a custom relevance formula `score = (frequency * 10) + 1000 - (depth * 5)`.
+* **Inverted Index Storage:** Generates grouped raw `.data` text files in `data/storage/` tracking deep page frequencies.
 * **Back-pressure Management:** Built-in rate limiting (`REQUEST_DELAY`) and concurrency limits (`MAX_WORKERS`) to prevent overloading host and target servers.
 * **Persistent SQLite Storage:** Zero-configuration database automatically creates tables (`crawl_jobs`, `pages`). Supports resuming/maintaining data across server restarts.
 * **Responsive Web Interface:** Clean HTML/CSS frontend to manage indexing, monitor system status, and explore search results.
@@ -50,17 +52,17 @@ A concurrent web crawling platform and search engine built with Python and Flask
    ```bash
    python app.py
    ```
-   The server will start on `http://127.0.0.1:5000` (or the configured port) and automatically initialize the `crawler.db` database.
+   The server will start on `http://localhost:3600` (or the configured port) and automatically initialize the `crawler.db` database.
 
 5. **Open the web interface:**
-   Navigate to `http://127.0.0.1:5000/` in your web browser.
+   Navigate to `http://localhost:3600/` in your web browser.
 
 ---
 
 ## 📖 Usage Guide
 
 ### 1. Creating a Crawl Job
-Navigate to the Index page (`http://127.0.0.1:5000/`).
+Navigate to the Index page (`http://localhost:3600/`).
 
 Fill in the parameters:
 - **Origin URL:** The starting point (e.g., `http://books.toscrape.com/`).
@@ -69,7 +71,7 @@ Fill in the parameters:
 Click **"Start Indexing"**. The job will run in the background.
 
 ### 2. Monitoring Crawlers
-Navigate to the Status page (`http://127.0.0.1:5000/status`).
+Navigate to the Status page (`http://localhost:3600/status`).
 
 The dashboard auto-refreshes every 3 seconds to show:
 - **Total Pages Indexed**
@@ -77,11 +79,15 @@ The dashboard auto-refreshes every 3 seconds to show:
 - **Live details for recent jobs** (Status, Pages Crawled, Current Queue Size).
 
 ### 3. Searching Content
-Navigate to the Search page (`http://127.0.0.1:5000/search`).
+Navigate to the Search page (`http://localhost:3600/search`).
 
 Enter a keyword (e.g., "poetry", "python").
 
 The engine will query the SQLite database (`LIKE` search on titles and text content) and return a formatted table displaying the Relevant URL, Origin URL, and Depth.
+
+**Advanced API Search (JSON):**
+You can also request JSON output sorted by relevance (using the `.data` text files) via:
+`GET http://localhost:3600/search?query=YOUR_WORD&sortBy=relevance`
 
 ---
 
@@ -96,6 +102,8 @@ The application uses standard HTTP methods for communication between the UI and 
 ### API & Actions
 - `POST /index` : Initiates a new background crawl job.
   - *Form Data:* `origin_url` (string), `depth` (integer)
+
+- `GET /search?query={word}&sortBy=relevance` : Uses raw `.data` text files to return relevance scored search results as JSON natively.
 
 - `GET /api/status` : Returns real-time system metrics in JSON format.
   ```json
@@ -130,6 +138,8 @@ web-crawler/
 ├── utils/                      # 🛠️ Core utilities
 │   ├── html_parser.py          #    Request handling, BeautifulSoup parsing
 │   └── test_html_parser.py     #    Unit tests for parser (Optional)
+├── data/storage/               # 📂 Inverted index text files
+│   └── *.data                  #    Raw word frequency data for exact matches
 ├── demo/                       # 🎨 Web interface templates
 │   ├── crawler.html            #    Index initiation form
 │   ├── search.html             #    Search interface
@@ -156,17 +166,20 @@ You can tweak the performance and behavior of the crawler by modifying the const
 - **Resiliency:** Automatically removes `<script>` and `<style>` tags before indexing text to ensure clean search results. Handles 404s and connection timeouts gracefully without crashing the main thread.
 
 ### Search System
-- **Data Model:** Extracted text and titles are stored alongside their `origin_url` and discovery depth in the `pages` table.
-- **Non-blocking:** Because SQLite is configured with `check_same_thread=False` and Flask runs with `threaded=True`, `SELECT` queries from the search page run perfectly even while the background thread executes `INSERT` statements.
+- **Dual Data Model:** The system stores data in two formats:
+  1. Extracted text and titles alongside their `origin_url` and discovery depth into the `pages` SQLite table for broader visual searches.
+  2. Isolated alphabetic text files (`data/storage/{letter}.data`) generating an inverted index layout that tracks explicit textual frequencies for API relevance scoring queries.
+- **Non-blocking:** Because SQLite is configured with `check_same_thread=False` and Flask runs with `threaded=True`, `SELECT` queries from the search page run perfectly even while the background thread executes `INSERT` statements simultaneously.
+- **Relevance Algorithm:** When queried by `sortBy=relevance`, scoring factors specific `frequency`, static exact bounds (`1000` base) and negates the `depth` mapping it to logical descending outputs.
 
 ---
 
 ## 🚨 Troubleshooting
 
 ### Port already in use:
-If `app.run()` fails because port 5000 is occupied, you can change it in `app.py`:
+If `app.run()` fails because port 3600 is occupied, you can change it in `app.py`:
 ```python
-app.run(debug=True, threaded=True, port=5001)
+app.run(debug=True, threaded=True, port=3601)
 ```
 
 ### sqlite3.OperationalError: database is locked:
