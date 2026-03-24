@@ -1,7 +1,9 @@
 import threading
 import time
+import os
+import re
 from concurrent.futures import ThreadPoolExecutor
-from collections import deque
+from collections import deque, Counter
 import logging
 
 from database import get_db_connection
@@ -96,6 +98,12 @@ def _process_url(url, depth, job_id, origin_url, max_depth, queue, visited, lock
 
     title, text = extract_title_and_text(html)
     
+    all_text = (title + " " + text).lower()
+    words = re.findall(r'\b[a-z]{2,}\b', all_text)
+    word_counts = Counter(words)
+    
+    os.makedirs(os.path.join("data", "storage"), exist_ok=True)
+    
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -108,6 +116,13 @@ def _process_url(url, depth, job_id, origin_url, max_depth, queue, visited, lock
             with lock:
                 if job_id in active_jobs:
                     active_jobs[job_id]['pages_crawled'] += 1
+                
+                # Write to inverted index files
+                for word, count in word_counts.items():
+                    first_letter = word[0]
+                    filepath = os.path.join("data", "storage", f"{first_letter}.data")
+                    with open(filepath, "a", encoding="utf-8") as f:
+                        f.write(f"{word} {url} {origin_url} {depth} {count}\n")
         conn.commit()
     except Exception as e:
         logging.error(f"Veritabanına yazarken hata: {e}")
@@ -115,7 +130,7 @@ def _process_url(url, depth, job_id, origin_url, max_depth, queue, visited, lock
         conn.close()
 
     if depth < max_depth:
-        new_links = extract_links(html, origin_url) # origin_url'ye göre netloc kontrolü daha sağlıklı
+        new_links = extract_links(html, url, origin_url) # current url'ye göre linkleri tamamla, origin'e göre netloc sınırla
         
         with lock:
             for link in new_links:
