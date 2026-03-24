@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Web Crawler - Index</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+</head>
+<body>
+    <h1>Web Crawler</h1>
+    <nav>
+        <a href="/">Index</a> | <a href="/search">Search</a> | <a href="/status">Status</a>
+    </nav>
+    <h2>Start a New Crawl</h2>
+    <form action="/index" method="post">
+        <label for="origin_url">Origin URL</label>
+        <input type="url" id="origin_url" name="origin_url" required placeholder="https://example.com">
+        
+        <label for="depth">Max Depth (k)</label>
+        <input type="number" id="depth" name="depth" value="2" min="0" max="5">
+        
+        <button type="submit">Start Indexing</button>
+    </form>
+</body>
+</html>

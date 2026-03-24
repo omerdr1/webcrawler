@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Web Crawler - Status</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+</head>
+<body>
+    <h1>Web Crawler</h1>
+    <nav>
+        <a href="/">Index</a> | <a href="/search">Search</a> | <a href="/status">Status</a>
+    </nav>
+    <h2>System Status</h2>
+    
+    <div id="status-container">
+        <p>Loading status...</p>
+    </div>
+
+    <script>
+        function updateStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('status-container');
+                    
+                    let jobsHtml = '<h4>Recent Jobs</h4>';
+                    if (data.recent_jobs && data.recent_jobs.length > 0) {
+                        jobsHtml += '<table><thead><tr><th>Job ID</th><th>Origin</th><th>Depth</th><th>Status</th><th>Pages Crawled</th><th>Queue</th></tr></thead><tbody>';
+                        data.recent_jobs.forEach(job => {
+                            jobsHtml += `
+                                <tr>
+                                    <td>${job.id}</td>
+                                    <td>${job.origin_url}</td>
+                                    <td>${job.max_depth}</td>
+                                    <td>${job.status}</td>
+                                    <td>${job.pages_crawled || 0}</td>
+                                    <td>${job.queue_size || 0}</td>
+                                </tr>
+                            `;
+                        });
+                        jobsHtml += '</tbody></table>';
+                    } else {
+                        jobsHtml += '<p>No jobs have been run yet.</p>';
+                    }
+                    
+                    container.innerHTML = `
+                        <p><strong>Total Pages Indexed:</strong> ${data.total_pages_indexed}</p>
+                        <p><strong>Active Crawling Jobs:</strong> ${data.active_jobs_count}</p>
+                        ${jobsHtml}
+                    `;
+                })
+                .catch(error => console.error('Error fetching status:', error));
+        }
+        
+        // İlk yüklemede ve her 3 saniyede bir durumu güncelle
+        updateStatus();
+        setInterval(updateStatus, 3000);
+    </script>
+</body>
+</html>
