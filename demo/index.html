@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="A concurrent web crawler and search engine with real-time monitoring, backpressure controls, and intelligent relevance-based search.">
+    <title>WebCrawler — Index, Search & Monitor</title>
+    <link rel="stylesheet" href="/demo/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕷️</text></svg>">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="app-logo">
+                <div class="app-logo-icon">🕷️</div>
+                <h1>WebCrawler</h1>
+            </div>
+            <p class="app-subtitle">Concurrent indexing &amp; search engine with backpressure control</p>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="tab-nav" role="tablist">
+            <button class="tab-btn active" data-tab="index" role="tab" aria-selected="true" id="tab-index-btn">
+                <span class="tab-icon">📡</span>
+                <span class="tab-label">Index</span>
+            </button>
+            <button class="tab-btn" data-tab="search" role="tab" aria-selected="false" id="tab-search-btn">
+                <span class="tab-icon">🔍</span>
+                <span class="tab-label">Search</span>
+            </button>
+            <button class="tab-btn" data-tab="status" role="tab" aria-selected="false" id="tab-status-btn">
+                <span class="tab-icon">📊</span>
+                <span class="tab-label">Status</span>
+            </button>
+        </nav>
+
+        <!-- ═══════════════════════════════════════════
+             TAB 1: INDEX
+        ═══════════════════════════════════════════ -->
+        <section class="tab-panel active" id="panel-index" role="tabpanel">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon indigo">📡</div>
+                    <div>
+                        <div class="card-title">Start a New Crawl</div>
+                        <div class="card-description">Enter a URL and depth to begin indexing pages</div>
+                    </div>
+                </div>
+                <form id="index-form">
+                    <div class="form-group">
+                        <label class="form-label" for="origin-url">Origin URL</label>
+                        <input type="url" id="origin-url" class="form-input" 
+                               placeholder="https://example.com" required
+                               autocomplete="url">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="max-depth">Max Depth (k)</label>
+                            <input type="number" id="max-depth" class="form-input" 
+                                   value="2" min="0" max="10" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="start-indexing-btn">
+                            🚀 Start Indexing
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card" style="margin-top: 20px;">
+                <div class="card-header">
+                    <div class="card-header-icon cyan">💡</div>
+                    <div>
+                        <div class="card-title">How It Works</div>
+                        <div class="card-description">Understanding the crawler</div>
+                    </div>
+                </div>
+                <div style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.8;">
+                    <p>The crawler performs a <strong style="color: var(--text-primary);">Breadth-First Search (BFS)</strong> 
+                    starting from your origin URL. Depth <em>k</em> represents the number of hops from the origin page.</p>
+                    <p style="margin-top: 12px;">
+                        <strong style="color: var(--text-primary);">Backpressure</strong> mechanisms ensure controlled load:
+                    </p>
+                    <ul style="margin-top: 8px; padding-left: 20px;">
+                        <li>Token bucket rate limiter (10 req/s)</li>
+                        <li>Bounded queue (max 10,000 URLs)</li>
+                        <li>Thread pool (5 concurrent workers)</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             TAB 2: SEARCH
+        ═══════════════════════════════════════════ -->
+        <section class="tab-panel" id="panel-search" role="tabpanel">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon emerald">🔍</div>
+                    <div>
+                        <div class="card-title">Search Indexed Pages</div>
+                        <div class="card-description">Query across all crawled content</div>
+                    </div>
+                </div>
+
+                <div class="search-mode-toggle">
+                    <button class="search-mode-btn active" data-mode="keyword" id="mode-keyword-btn">Keyword</button>
+                    <button class="search-mode-btn" data-mode="relevance" id="mode-relevance-btn">Relevance</button>
+                </div>
+
+                <form id="search-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <input type="search" id="search-query" class="form-input" 
+                                   placeholder="Enter search term..." required
+                                   autocomplete="off">
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="search-btn">
+                            Search
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="search-results-container" style="margin-top: 20px;"></div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             TAB 3: STATUS
+        ═══════════════════════════════════════════ -->
+        <section class="tab-panel" id="panel-status" role="tabpanel">
+            <!-- Metrics -->
+            <div class="metrics-grid" id="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value indigo" id="metric-total-pages">—</div>
+                    <div class="metric-label">Pages Indexed</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value emerald" id="metric-active-jobs">—</div>
+                    <div class="metric-label">Active Jobs</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value cyan" id="metric-rate">—</div>
+                    <div class="metric-label">Available Tokens</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value amber" id="metric-queue">—</div>
+                    <div class="metric-label">Total Queue Depth</div>
+                </div>
+            </div>
+
+            <!-- Backpressure -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon amber">⚡</div>
+                    <div>
+                        <div class="card-title">Backpressure Status</div>
+                        <div class="card-description">System load and rate limiting controls</div>
+                    </div>
+                </div>
+                <div id="backpressure-panel">
+                    <div class="bp-panel">
+                        <div class="bp-item">
+                            <span class="bp-label">Max Workers</span>
+                            <span class="bp-value" id="bp-workers">—</span>
+                        </div>
+                        <div class="bp-item">
+                            <span class="bp-label">Max Requests/sec</span>
+                            <span class="bp-value" id="bp-rate">—</span>
+                        </div>
+                        <div class="bp-item">
+                            <span class="bp-label">Max Queue Depth</span>
+                            <span class="bp-value" id="bp-max-queue">—</span>
+                        </div>
+                        <div class="bp-item">
+                            <span class="bp-label">Available Tokens</span>
+                            <span class="bp-value" id="bp-tokens">—</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 8px;">Queue Utilization</div>
+                        <div class="gauge-container">
+                            <div class="gauge-bar">
+                                <div class="gauge-fill low" id="queue-gauge-fill" style="width: 0%"></div>
+                            </div>
+                            <div class="gauge-label" id="queue-gauge-label">0%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Jobs Table -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon indigo">📋</div>
+                    <div>
+                        <div class="card-title">Recent Jobs</div>
+                        <div class="card-description">Crawl job history and live progress</div>
+                    </div>
+                </div>
+                <div id="jobs-table-container">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div class="empty-state-title">No jobs yet</div>
+                        <div class="empty-state-description">Start a crawl from the Index tab to see job progress here.</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+    /* ================================================================
+       WebCrawler SPA — Client-Side Application Logic
+    ================================================================ */
+    (function () {
+        'use strict';
+
+        // ── State ─────────────────────────────────────────
+        let searchMode = 'keyword'; // 'keyword' | 'relevance'
+        let statusInterval = null;
+
+        // ── Tab Navigation ────────────────────────────────
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabPanels = document.querySelectorAll('.tab-panel');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                tabBtns.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+                tabPanels.forEach(p => p.classList.remove('active'));
+                btn.classList.add('active');
+                btn.setAttribute('aria-selected', 'true');
+                document.getElementById('panel-' + tab).classList.add('active');
+
+                // Start/stop status polling based on active tab
+                if (tab === 'status') {
+                    fetchStatus();
+                    startStatusPolling();
+                } else {
+                    stopStatusPolling();
+                }
+            });
+        });
+
+        // ── Index Form ────────────────────────────────────
+        const indexForm = document.getElementById('index-form');
+        const startBtn = document.getElementById('start-indexing-btn');
+
+        indexForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const origin = document.getElementById('origin-url').value.trim();
+            const k = parseInt(document.getElementById('max-depth').value, 10);
+
+            if (!origin) return;
+
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<span class="spinner"></span> Starting...';
+
+            try {
+                const resp = await fetch('/api/index', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ origin, k })
+                });
+                const data = await resp.json();
+
+                if (resp.ok) {
+                    showToast('success', `Crawl job #${data.job_id} started for ${data.origin}`);
+                    indexForm.reset();
+                    document.getElementById('max-depth').value = '2';
+                } else {
+                    showToast('error', data.error || 'Failed to start crawl');
+                }
+            } catch (err) {
+                showToast('error', 'Network error: ' + err.message);
+            } finally {
+                startBtn.disabled = false;
+                startBtn.innerHTML = '🚀 Start Indexing';
+            }
+        });
+
+        // ── Search ────────────────────────────────────────
+        const searchForm = document.getElementById('search-form');
+        const searchResultsContainer = document.getElementById('search-results-container');
+
+        // Search mode toggle
+        document.querySelectorAll('.search-mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.search-mode-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                searchMode = btn.dataset.mode;
+            });
+        });
+
+        searchForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = document.getElementById('search-query').value.trim();
+            if (!query) return;
+
+            const searchBtn = document.getElementById('search-btn');
+            searchBtn.disabled = true;
+            searchBtn.innerHTML = '<span class="spinner"></span>';
+
+            try {
+                let url = `/api/search?query=${encodeURIComponent(query)}`;
+                if (searchMode === 'relevance') url += '&sortBy=relevance';
+
+                const resp = await fetch(url);
+                const data = await resp.json();
+
+                renderSearchResults(data);
+            } catch (err) {
+                searchResultsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <div class="empty-state-title">Search Failed</div>
+                        <div class="empty-state-description">${err.message}</div>
+                    </div>`;
+            } finally {
+                searchBtn.disabled = false;
+                searchBtn.innerHTML = 'Search';
+            }
+        });
+
+        function renderSearchResults(data) {
+            const results = data.results || [];
+            const isLive = data.indexing_active;
+
+            if (results.length === 0) {
+                searchResultsContainer.innerHTML = `
+                    <div class="card">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🔍</div>
+                            <div class="empty-state-title">No results found</div>
+                            <div class="empty-state-description">Try a different search term or wait for more pages to be indexed.</div>
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            // Find max score for bar scaling (relevance mode)
+            const maxScore = results.reduce((max, r) => Math.max(max, r.relevance_score || 0), 1);
+
+            let html = `
+                <div class="card">
+                    <div class="search-results-header">
+                        <span class="results-count">${data.count} result${data.count !== 1 ? 's' : ''} for "<strong>${escapeHtml(data.query)}</strong>"</span>
+                        ${isLive ? '<span class="live-indicator">Live — indexing active</span>' : ''}
+                    </div>`;
+
+            results.forEach(r => {
+                const url = r.relevant_url || r.url || '';
+                const origin = r.origin_url || r.origin || '';
+                const depth = r.depth ?? '?';
+                const title = r.title || '';
+                const score = r.relevance_score;
+                const freq = r.frequency;
+
+                html += `
+                    <div class="result-card">
+                        <div class="depth-badge" title="Depth: ${depth}">${depth}</div>
+                        <div class="result-info">
+                            <a class="result-url" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+                            ${title ? `<div class="result-title">${escapeHtml(title)}</div>` : ''}
+                            <div class="result-meta">
+                                <span>📌 Origin: ${escapeHtml(truncateUrl(origin))}</span>
+                                ${freq !== undefined ? `<span>📊 Frequency: ${freq}</span>` : ''}
+                            </div>
+                        </div>
+                        ${score !== undefined ? `
+                        <div class="relevance-bar-container">
+                            <div class="relevance-bar">
+                                <div class="relevance-bar-fill" style="width: ${Math.round((score / maxScore) * 100)}%"></div>
+                            </div>
+                            <div class="relevance-score">${score}</div>
+                        </div>` : ''}
+                    </div>`;
+            });
+
+            html += '</div>';
+            searchResultsContainer.innerHTML = html;
+        }
+
+        // ── Status Polling ────────────────────────────────
+        function startStatusPolling() {
+            stopStatusPolling();
+            statusInterval = setInterval(fetchStatus, 2000);
+        }
+
+        function stopStatusPolling() {
+            if (statusInterval) {
+                clearInterval(statusInterval);
+                statusInterval = null;
+            }
+        }
+
+        async function fetchStatus() {
+            try {
+                const resp = await fetch('/api/status');
+                const data = await resp.json();
+                renderStatus(data);
+            } catch (err) {
+                console.error('Status fetch error:', err);
+            }
+        }
+
+        function renderStatus(data) {
+            // Metrics
+            document.getElementById('metric-total-pages').textContent = data.total_pages_indexed.toLocaleString();
+            document.getElementById('metric-active-jobs').textContent = data.active_jobs_count;
+
+            const bp = data.backpressure || {};
+            document.getElementById('metric-rate').textContent = bp.available_tokens ?? '—';
+
+            // Calculate total queue depth from running jobs
+            let totalQueue = 0;
+            (data.recent_jobs || []).forEach(j => {
+                if (j.status === 'running') totalQueue += (j.queue_size || 0);
+            });
+            document.getElementById('metric-queue').textContent = totalQueue.toLocaleString();
+
+            // Backpressure panel
+            document.getElementById('bp-workers').textContent = bp.max_workers ?? '—';
+            document.getElementById('bp-rate').textContent = bp.max_requests_per_second ?? '—';
+            document.getElementById('bp-max-queue').textContent = (bp.max_queue_depth ?? 0).toLocaleString();
+            document.getElementById('bp-tokens').textContent = bp.available_tokens ?? '—';
+
+            // Queue gauge
+            const maxQ = bp.max_queue_depth || 10000;
+            const pct = Math.min(100, Math.round((totalQueue / maxQ) * 100));
+            const gaugeFill = document.getElementById('queue-gauge-fill');
+            gaugeFill.style.width = pct + '%';
+            gaugeFill.className = 'gauge-fill ' + (pct < 50 ? 'low' : pct < 80 ? 'medium' : 'high');
+            document.getElementById('queue-gauge-label').textContent = pct + '%';
+
+            // Jobs table
+            renderJobsTable(data.recent_jobs || []);
+        }
+
+        function renderJobsTable(jobs) {
+            const container = document.getElementById('jobs-table-container');
+
+            if (jobs.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div class="empty-state-title">No jobs yet</div>
+                        <div class="empty-state-description">Start a crawl from the Index tab to see job progress here.</div>
+                    </div>`;
+                return;
+            }
+
+            let html = `
+                <table class="jobs-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Origin</th>
+                            <th>Depth</th>
+                            <th>Status</th>
+                            <th>Pages</th>
+                            <th>Queue</th>
+                            <th>Rate</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+            jobs.forEach(job => {
+                const statusClass = job.status || 'pending';
+                html += `
+                    <tr>
+                        <td style="font-family: 'JetBrains Mono', monospace; color: var(--text-muted);">#${job.id}</td>
+                        <td class="url-cell" title="${escapeHtml(job.origin_url)}">${escapeHtml(truncateUrl(job.origin_url))}</td>
+                        <td>${job.max_depth}</td>
+                        <td><span class="status-badge ${statusClass}">${statusClass}</span></td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${(job.pages_crawled || 0).toLocaleString()}</td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${(job.queue_size || 0).toLocaleString()}</td>
+                        <td style="font-family: 'JetBrains Mono', monospace;">${job.pages_per_second || '—'} p/s</td>
+                        <td>
+                            ${statusClass === 'interrupted' ? 
+                                `<button class="btn btn-resume btn-sm" onclick="resumeJob(${job.id})">▶ Resume</button>` : 
+                                (job.links_dropped > 0 ? `<span style="font-size: 0.72rem; color: var(--accent-amber);" title="Links dropped due to queue limit">⚠ ${job.links_dropped} dropped</span>` : '')}
+                        </td>
+                    </tr>`;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // ── Resume Job (global for onclick) ───────────────
+        window.resumeJob = async function(jobId) {
+            try {
+                const resp = await fetch(`/api/resume/${jobId}`, { method: 'POST' });
+                const data = await resp.json();
+                if (resp.ok) {
+                    showToast('success', `Job #${data.job_id} resumed`);
+                    fetchStatus();
+                } else {
+                    showToast('error', data.error || 'Could not resume job');
+                }
+            } catch (err) {
+                showToast('error', 'Network error: ' + err.message);
+            }
+        };
+
+        // ── Toast Notifications ───────────────────────────
+        function showToast(type, message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+            toast.innerHTML = `<span>${icons[type] || ''}</span><span>${message}</span>`;
+            
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'slideOutRight 0.3s ease-in forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        // ── Utilities ─────────────────────────────────────
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        function truncateUrl(url) {
+            if (!url) return '';
+            try {
+                const u = new URL(url);
+                const path = u.pathname.length > 30 ? u.pathname.substring(0, 30) + '…' : u.pathname;
+                return u.hostname + path;
+            } catch {
+                return url.length > 50 ? url.substring(0, 50) + '…' : url;
+            }
+        }
+
+        // ── Initial load ─────────────────────────────────
+        // If status tab is visible on load, start polling
+        if (document.getElementById('panel-status').classList.contains('active')) {
+            fetchStatus();
+            startStatusPolling();
+        }
+    })();
+    </script>
+</body>
+</html>

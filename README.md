@@ -1,194 +1,255 @@
 # Web Crawler & Search Engine
 
-A concurrent web crawling platform and search engine built with Python and Flask. It features real-time monitoring, intelligent search capabilities, and a lightweight file-based SQLite database, allowing you to search through indexed content while the crawler is actively running in the background.
+A concurrent web crawling and search engine platform built with Python and Flask. Features real-time monitoring, three-layer backpressure control, intelligent relevance-based search, and resumable crawl jobs — all powered by SQLite with WAL mode for concurrent read/write access.
 
-## 🌟 Features
+## Features
 
-* **Multi-threaded Web Crawler:** Utilizes Python's `ThreadPoolExecutor` for concurrent page fetching without blocking the main server.
-* **Real-time Search Engine:** Query indexed pages instantly, even while new pages are being crawled and added to the database.
-* **Relevance Scoring Engine:** Supports exact word matching via specific endpoints utilizing a custom relevance formula `score = (frequency * 10) + 1000 - (depth * 5)`.
-* **Inverted Index Storage:** Generates grouped raw `.data` text files in `data/storage/` tracking deep page frequencies.
-* **Back-pressure Management:** Built-in rate limiting (`REQUEST_DELAY`) and concurrency limits (`MAX_WORKERS`) to prevent overloading host and target servers.
-* **Persistent SQLite Storage:** Zero-configuration database automatically creates tables (`crawl_jobs`, `pages`). Supports resuming/maintaining data across server restarts.
-* **Responsive Web Interface:** Clean HTML/CSS frontend to manage indexing, monitor system status, and explore search results.
-* **Smart Cycle Detection:** Prevents infinite loops by tracking visited URLs and restricting crawls to the specified depth (`k`).
+- **Concurrent Web Crawler** — Multi-threaded BFS crawling via `ThreadPoolExecutor` with configurable depth limits
+- **Three-Layer Backpressure** — Token bucket rate limiter (10 req/s) + bounded queue (10K max) + worker pool (5 threads)
+- **Live Search During Indexing** — SQLite WAL mode enables non-blocking search queries while the crawler writes new data
+- **Relevance Scoring Engine** — Dual search: keyword matching (SQL) and exact-word frequency scoring via inverted index files
+- **Resumable Crawl Jobs** — Periodic frontier checkpoints allow interrupted jobs to resume from where they left off
+- **Real-time Dashboard** — Auto-updating status page with backpressure gauges, job progress, and system metrics
+- **Premium Dark Mode UI** — Glassmorphism design with micro-animations, toast notifications, and responsive layout
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
-* Python 3.8 or higher
-* Web browser (Chrome, Firefox, Safari, Edge)
+- Python 3.8+
+- Web browser (Chrome, Firefox, Safari, Edge)
 
-### Installation & Setup
+### Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/omerdr1/webcrawler.git
-   cd web-crawler
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/web-crawler.git
+cd web-crawler
 
-2. **Create and activate a virtual environment (Recommended):**
+# Create virtual environment
+python -m venv venv
 
-   *On macOS/Linux:*
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
+# Activate (Windows)
+venv\Scripts\activate
+# Activate (macOS/Linux)
+source venv/bin/activate
 
-   *On Windows:*
-   ```bash
-   python -m venv venv
-   venv\Scripts\activate
-   ```
+# Install dependencies
+pip install -r requirements.txt
+```
 
-3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Run
 
-4. **Start the application:**
-   ```bash
-   python app.py
-   ```
-   The server will start on `http://localhost:3600` (or the configured port) and automatically initialize the `crawler.db` database.
+```bash
+python app.py
+```
 
-5. **Open the web interface:**
-   Navigate to `http://localhost:3600/` in your web browser.
+Open `http://localhost:3600` in your browser.
 
 ---
 
-## 📖 Usage Guide
+## Usage
 
-### 1. Creating a Crawl Job
-Navigate to the Index page (`http://localhost:3600/`).
+### 1. Start a Crawl Job
 
-Fill in the parameters:
-- **Origin URL:** The starting point (e.g., `http://books.toscrape.com/`).
-- **Max Depth (k):** How many links deep the crawler should go (0 = only the origin page, 2 = origin -> link -> link).
+Navigate to the **Index** tab. Enter an origin URL (e.g., `https://books.toscrape.com/`) and a max depth (k). Click **Start Indexing**.
 
-Click **"Start Indexing"**. The job will run in the background.
+The crawler will run in the background — you can navigate to other tabs while it works.
 
-### 2. Monitoring Crawlers
-Navigate to the Status page (`http://localhost:3600/status`).
+### 2. Monitor Progress
 
-The dashboard auto-refreshes every 3 seconds to show:
-- **Total Pages Indexed**
-- **Active Crawling Jobs**
-- **Live details for recent jobs** (Status, Pages Crawled, Current Queue Size).
+Switch to the **Status** tab. The dashboard auto-refreshes every 2 seconds showing:
 
-### 3. Searching Content
-Navigate to the Search page (`http://localhost:3600/search`).
+| Metric | Description |
+|--------|-------------|
+| Pages Indexed | Total pages stored in the database |
+| Active Jobs | Number of currently running crawl jobs |
+| Available Tokens | Rate limiter tokens available for requests |
+| Queue Depth | Current BFS frontier size across all jobs |
 
-Enter a keyword (e.g., "poetry", "python").
+The **Queue Utilization** gauge visualizes how close the queue is to the backpressure limit (green → amber → red).
 
-The engine will query the SQLite database (`LIKE` search on titles and text content) and return a formatted table displaying the Relevant URL, Origin URL, and Depth.
+### 3. Search
 
-**Advanced API Search (JSON):**
-You can also request JSON output sorted by relevance (using the `.data` text files) via:
-`GET http://localhost:3600/search?query=YOUR_WORD&sortBy=relevance`
+Switch to the **Search** tab. Two modes are available:
 
----
+- **Keyword**: Broad search across page titles and content (SQL LIKE)
+- **Relevance**: Exact word match with frequency-based scoring: `score = (freq × 10) + 1000 − (depth × 5)`
 
-## 🔧 Routes & Endpoints
-The application uses standard HTTP methods for communication between the UI and the server.
+Results show the relevant URL, origin URL, depth, and (in relevance mode) a visual score bar.
 
-### Web Views (UI)
-- `GET /` : Renders the Crawler Initiation form.
-- `GET /search` : Renders the Search interface and handles query parameters.
-- `GET /status` : Renders the Status dashboard.
+If indexing is active, a **"Live — indexing active"** indicator appears, meaning results may update as new pages are discovered.
 
-### API & Actions
-- `POST /index` : Initiates a new background crawl job.
-  - *Form Data:* `origin_url` (string), `depth` (integer)
+### 4. Resume Interrupted Jobs
 
-- `GET /search?query={word}&sortBy=relevance` : Uses raw `.data` text files to return relevance scored search results as JSON natively.
-
-- `GET /api/status` : Returns real-time system metrics in JSON format.
-  ```json
-  {
-    "active_jobs_count": 1,
-    "total_pages_indexed": 145,
-    "recent_jobs": [
-      {
-        "id": 1,
-        "origin_url": "http://books.toscrape.com/",
-        "max_depth": 2,
-        "status": "running",
-        "pages_crawled": 145,
-        "queue_size": 32
-      }
-    ]
-  }
-  ```
+If the server is stopped while a crawl is running, the job is automatically marked as **interrupted** on next startup. Click the **▶ Resume** button in the Status tab to continue from the last checkpoint.
 
 ---
 
-## 📁 Project Structure
+## API Reference
 
-```plaintext
-web-crawler/
-├── app.py                      # 🚀 Main Flask application and routing
-├── database.py                 # 🗄️ SQLite initialization and connection pool
-├── requirements.txt            # 📦 Project dependencies
-├── services/                   # 🏗️ Business logic layer
-│   ├── crawler_service.py      #    Crawler logic, ThreadPool, BFS Queue
-│   └── search_service.py       #    Database querying and formatting
-├── utils/                      # 🛠️ Core utilities
-│   ├── html_parser.py          #    Request handling, BeautifulSoup parsing
-│   └── test_html_parser.py     #    Unit tests for parser (Optional)
-├── data/storage/               # 📂 Inverted index text files
-│   └── *.data                  #    Raw word frequency data for exact matches
-├── demo/                       # 🎨 Web interface templates
-│   ├── crawler.html            #    Index initiation form
-│   ├── search.html             #    Search interface
-│   └── status.html             #    Real-time monitoring dashboard
-├── crawler.db                  # 💾 SQLite Database (Auto-generated)
-└── README.md                   # 📖 This documentation file
+| Method | Endpoint | Description | Body/Params |
+|--------|----------|-------------|-------------|
+| `POST` | `/api/index` | Start crawl job | `{"origin": "https://...", "k": 2}` |
+| `POST` | `/api/resume/<id>` | Resume interrupted job | — |
+| `GET` | `/api/search` | Search pages | `?query=term&sortBy=relevance` |
+| `GET` | `/api/status` | System status | — |
+
+### Search Response Format
+
+```json
+{
+  "results": [
+    {
+      "relevant_url": "https://example.com/page",
+      "origin_url": "https://example.com",
+      "depth": 1,
+      "title": "Page Title"
+    }
+  ],
+  "query": "example",
+  "count": 1,
+  "indexing_active": true
+}
+```
+
+### Status Response Format
+
+```json
+{
+  "total_pages_indexed": 245,
+  "active_jobs_count": 1,
+  "backpressure": {
+    "max_workers": 5,
+    "max_queue_depth": 10000,
+    "max_requests_per_second": 10.0,
+    "available_tokens": 8.3
+  },
+  "recent_jobs": [
+    {
+      "id": 1,
+      "origin_url": "https://books.toscrape.com/",
+      "max_depth": 2,
+      "status": "running",
+      "pages_crawled": 245,
+      "queue_size": 832,
+      "pages_per_second": 4.2,
+      "links_dropped": 0
+    }
+  ]
+}
 ```
 
 ---
 
-## ⚙️ Configuration
-You can tweak the performance and behavior of the crawler by modifying the constants at the top of `services/crawler_service.py`:
+## Project Structure
 
-- `MAX_WORKERS = 5`: Maximum number of concurrent threads downloading pages. Increase for faster crawling, decrease if you encounter memory/CPU issues.
-- `REQUEST_DELAY = 0.1`: Time in seconds to wait between processing queue items. Acts as a rate limiter to prevent IP bans.
+```
+web-crawler/
+├── app.py                      # Flask API server & static file serving
+├── database.py                 # SQLite WAL mode, schema, thread-safe connections
+├── requirements.txt            # Python dependencies (flask, requests, beautifulsoup4)
+├── services/
+│   ├── __init__.py
+│   ├── crawler_service.py      # BFS engine, ThreadPool, TokenBucket, checkpoint/resume
+│   └── search_service.py       # Keyword + relevance search, live-results indicator
+├── utils/
+│   ├── __init__.py
+│   └── html_parser.py          # HTTP fetching, URL normalization, link extraction
+├── data/storage/               # Inverted index files (auto-generated)
+│   └── *.data                  # Word frequency data per letter
+├── demo/                       # Web UI (SPA)
+│   ├── index.html              # Single-page application
+│   └── style.css               # Premium dark mode design system
+├── agents/                     # Multi-agent workflow definitions
+│   ├── architect.md
+│   ├── backend_engineer.md
+│   ├── frontend_engineer.md
+│   └── qa_integration.md
+├── product_prd.md              # Product requirements document
+├── recommendation.md           # Production deployment recommendations
+├── multi_agent_workflow.md     # Multi-agent development process
+├── readme.md                   # This file
+└── crawler.db                  # SQLite database (auto-generated)
+```
 
 ---
 
-## 🔍 How It Works
+## Configuration
 
-### Crawler Architecture
-- **Breadth-First Search (BFS):** Uses Python's `collections.deque` to process URLs level by level, ensuring depth constraints are strictly followed.
-- **Concurrency & Thread Safety:** The main loop dispatches URLs to a `ThreadPoolExecutor`. A `threading.Lock()` is used to safely update shared resources (like the visited set and active job counters) preventing race conditions.
-- **Resiliency:** Automatically removes `<script>` and `<style>` tags before indexing text to ensure clean search results. Handles 404s and connection timeouts gracefully without crashing the main thread.
+Edit the constants at the top of `services/crawler_service.py`:
 
-### Search System
-- **Dual Data Model:** The system stores data in two formats:
-  1. Extracted text and titles alongside their `origin_url` and discovery depth into the `pages` SQLite table for broader visual searches.
-  2. Isolated alphabetic text files (`data/storage/{letter}.data`) generating an inverted index layout that tracks explicit textual frequencies for API relevance scoring queries.
-- **Non-blocking:** Because SQLite is configured with `check_same_thread=False` and Flask runs with `threaded=True`, `SELECT` queries from the search page run perfectly even while the background thread executes `INSERT` statements simultaneously.
-- **Relevance Algorithm:** When queried by `sortBy=relevance`, scoring factors specific `frequency`, static exact bounds (`1000` base) and negates the `depth` mapping it to logical descending outputs.
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `MAX_WORKERS` | 5 | Concurrent download threads |
+| `MAX_REQUESTS_PER_SECOND` | 10.0 | Token bucket refill rate |
+| `MAX_QUEUE_DEPTH` | 10,000 | Max BFS frontier size before dropping links |
+| `CHECKPOINT_INTERVAL` | 50 | Pages between frontier checkpoints (for resume) |
 
 ---
 
-## 🚨 Troubleshooting
+## Architecture
 
-### Port already in use:
-If `app.run()` fails because port 3600 is occupied, you can change it in `app.py`:
+### How Concurrent Search Works
+
+The key design decision enabling "search while indexing" is **SQLite WAL (Write-Ahead Logging) mode**:
+
+- In WAL mode, writers append to a separate log file instead of modifying the main database
+- Readers see a consistent snapshot and are **never blocked** by writers
+- This means search queries execute instantly even during heavy crawl writes
+- No external database server needed — it's a single file on disk
+
+### Backpressure Design
+
+Three complementary mechanisms prevent the system from overwhelming itself or target servers:
+
+```
+                     ┌─────────────────────┐
+  Discovered URLs ──►│  Bounded Queue       │
+                     │  (max 10,000 URLs)   │
+                     └─────────┬───────────┘
+                               │
+                     ┌─────────▼───────────┐
+                     │  Token Bucket        │
+                     │  (10 tokens/sec)     │
+                     └─────────┬───────────┘
+                               │
+                     ┌─────────▼───────────┐
+                     │  Thread Pool         │
+                     │  (5 workers)         │
+                     └─────────┬───────────┘
+                               │
+                          HTTP Fetch
+```
+
+### Designing for Search During Active Indexing
+
+The requirement states: "Search should be able to run while indexing is still active, reflecting new results as they are discovered."
+
+Our approach:
+1. **WAL mode** ensures reads never block on writes (and vice versa)
+2. Search responses include an `indexing_active` flag
+3. The UI shows a pulsing "Live" indicator when indexing is in progress
+4. Users can re-search to see newly indexed pages
+
+An alternative approach would be to use **Server-Sent Events (SSE)** or **WebSockets** to push new results to the client in real-time as they're indexed. This would eliminate the need for manual re-searching but adds complexity. For a production system, this would be the preferred approach.
+
+---
+
+## Troubleshooting
+
+**Port already in use:** Change the port in `app.py`:
 ```python
 app.run(debug=True, threaded=True, port=3601)
 ```
 
-### sqlite3.OperationalError: database is locked:
-This happens if the crawler is writing data too aggressively for your disk speed. Try increasing the `REQUEST_DELAY` in `crawler_service.py` to `0.5`.
+**sqlite3.OperationalError: database is locked:** Increase `REQUEST_DELAY` or reduce `MAX_WORKERS`. WAL mode significantly reduces this, but extremely fast writes on slow disks can still cause contention.
 
-### Pages Crawled stays at 0:
-Ensure you have an active internet connection. Some websites actively block generic User-Agents. Our `html_parser.py` uses a standard Chrome User-Agent, but heavily protected sites (like those using Cloudflare) might still reject requests with a `403 Forbidden`. Test with `http://books.toscrape.com/`.
+**Pages Crawled stays at 0:** Ensure you have internet access. Some sites block automated requests. Test with `https://books.toscrape.com/` which is designed for scraping practice.
 
 ---
 
-## 📜 License
-This project is licensed under the MIT License. Built for technical assessment purposes.
+## License
+
+MIT License. Built for technical assessment purposes.
